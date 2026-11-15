@@ -1,0 +1,30 @@
+# Node
+node_modules/
+frontend/dist/
+frontend/.vite/
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.venv/
+backend/.venv/
+
+# Environment
+.env
+.env.local
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+
+# Dados de producao
+data/
+*.sqlite3
+.pytest_cache/
+.env.*
+!.env.example

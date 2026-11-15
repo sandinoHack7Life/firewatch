@@ -1,0 +1,37 @@
+services:
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile.prod
+    env_file: .env
+    environment:
+      OBSERVATION_DATABASE_PATH: /data/observations.sqlite3
+      ALERTS_DATABASE_PATH: /data/alerts.sqlite3
+      FIELD_VISITS_DATABASE_PATH: /data/field_visits.sqlite3
+      APP_ENV: production
+    volumes:
+      - ./data:/data
+    expose:
+      - "8000"
+    restart: unless-stopped
+
+  web:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile.prod
+    environment:
+      DOMAIN: ${DOMAIN}
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./frontend/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      - backend
+    restart: unless-stopped
+
+volumes:
+  caddy_data:
+  caddy_config:

@@ -1,0 +1,72 @@
+version: '3.9'
+
+services:
+  postgres:
+    image: postgis/postgis:16-3.4
+    container_name: firewatch-postgres
+    environment:
+      POSTGRES_DB: firewatch
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d firewatch"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: firewatch-backend
+    environment:
+      DATABASE_URL: postgresql+psycopg://postgres:postgres@postgres:5432/firewatch
+      FIRMS_MAP_KEY: ${FIRMS_MAP_KEY:-}
+      FIRMS_DAY_RANGE: ${FIRMS_DAY_RANGE:-2}
+      SYNC_INTERVAL_SECONDS: ${SYNC_INTERVAL_SECONDS:-300}
+      OBSERVATION_RETENTION_DAYS: ${OBSERVATION_RETENTION_DAYS:-730}
+      OBSERVATION_DATABASE_PATH: ${OBSERVATION_DATABASE_PATH:-/root/.modis-viirs-firewatch/observations.sqlite3}
+      ALERTS_DATABASE_PATH: ${ALERTS_DATABASE_PATH:-/root/.modis-viirs-firewatch/alerts.sqlite3}
+      FIELD_VISITS_DATABASE_PATH: ${FIELD_VISITS_DATABASE_PATH:-/root/.modis-viirs-firewatch/field_visits.sqlite3}
+      FIELD_DATA_ACCESS_KEY: ${FIELD_DATA_ACCESS_KEY:-}
+      SMTP_HOST: ${SMTP_HOST:-}
+      SMTP_PORT: ${SMTP_PORT:-587}
+      SMTP_USER: ${SMTP_USER:-}
+      SMTP_PASSWORD: ${SMTP_PASSWORD:-}
+      SMTP_FROM_EMAIL: ${SMTP_FROM_EMAIL:-}
+      SMTP_USE_STARTTLS: ${SMTP_USE_STARTTLS:-true}
+      APP_ENV: development
+    depends_on:
+      postgres:
+        condition: service_healthy
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./backend:/app
+      - firewatch_data:/root/.modis-viirs-firewatch
+    restart: unless-stopped
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: firewatch-frontend
+    environment:
+      VITE_API_BASE_URL: http://localhost:8000/api/v1
+    depends_on:
+      - backend
+    ports:
+      - "5174:5174"
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
+  firewatch_data:
