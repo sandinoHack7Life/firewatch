@@ -9,6 +9,6 @@ router = APIRouter()
 def parks() -> dict[str, object]:
     return {
         'items': list_parks(),
-        'boundary_source': 'OpenStreetMap',
-        'boundary_license': 'ODbL-1.0',
+        'boundary_source': 'Per-area; see each item',
+        'boundary_license': 'Per-area; see each item',
     }

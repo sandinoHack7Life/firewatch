@@ -18,6 +18,10 @@ FIRMS_SOURCES = (
 )
 
 
+class FIRMSResponseError(ValueError):
+    """Raised when a successful HTTP response is not a FIRMS CSV feed."""
+
+
 def _number(value: str | None) -> float | None:
     if not value:
         return None
@@ -46,7 +50,15 @@ class FIRMSClient:
 
     @staticmethod
     def parse_csv_csv(csv_text: str, feed: str = 'NASA FIRMS') -> list[dict[str, Any]]:
-        reader = csv.DictReader(io.StringIO(csv_text))
+        reader = csv.DictReader(io.StringIO(csv_text.lstrip('\ufeff')))
+        if reader.fieldnames is None:
+            raise FIRMSResponseError('NASA FIRMS returned an empty or invalid CSV response.')
+        reader.fieldnames = [
+            field.strip().lower() if field is not None else field
+            for field in reader.fieldnames
+        ]
+        if not {'latitude', 'longitude'}.issubset(reader.fieldnames):
+            raise FIRMSResponseError('NASA FIRMS returned an invalid CSV response.')
         results: list[dict[str, Any]] = []
         for row in reader:
             if not row:

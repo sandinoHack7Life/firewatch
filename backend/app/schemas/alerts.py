@@ -6,16 +6,6 @@ from typing import Literal
 from pydantic import BaseModel, Field, field_validator, model_validator
 
 
-ParkId = Literal[
-    'gorongosa',
-    'limpopo',
-    'banhine',
-    'zinave',
-    'bazaruto',
-    'maputo',
-    'magoe',
-    'quirimbas',
-]
 GeofenceType = Literal['preset', 'radius', 'bbox', 'park']
 AlertSensor = Literal['MODIS', 'VIIRS', 'HARMONIZED_HIGH_CONFIDENCE']
 AlertFrequency = Literal['immediate', 'hourly', 'daily']
@@ -27,7 +17,7 @@ class WatchlistPayload(BaseModel):
     enabled: bool = True
     geofence_type: GeofenceType
     preset: Literal['mozambique', 'amazon', 'california'] | None = None
-    park_id: ParkId | None = None
+    park_id: str | None = Field(default=None, min_length=1, max_length=40)
     latitude: float | None = Field(default=None, ge=-90, le=90)
     longitude: float | None = Field(default=None, ge=-180, le=180)
     radius_km: float | None = Field(default=None, gt=0, le=2000)

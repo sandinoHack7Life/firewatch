@@ -3,6 +3,7 @@ from datetime import date, timedelta
 from fastapi import APIRouter, HTTPException, Query
 
 from app.core.config import get_settings
+from app.api.v1.endpoints.park_scope import DEFAULT_PARK_ID, bbox_for_scope
 from app.services.planetary_computer.client import (
     DEFAULT_COLLECTIONS,
     PlanetaryComputerClient,
@@ -19,6 +20,7 @@ async def planetary_computer_search(
     end_date: date = Query(default_factory=date.today),
     collections: str | None = Query(default=None),
     limit: int = Query(default=30, ge=1, le=100),
+    park_id: str = Query(default=DEFAULT_PARK_ID),
 ) -> dict[str, object]:
     try:
         coordinates = tuple(float(value) for value in bbox.split(','))
@@ -30,15 +32,25 @@ async def planetary_computer_search(
         if start_date > end_date:
             raise ValueError('start_date must be on or before end_date')
         selected = [value.strip() for value in collections.split(',')] if collections else list(DEFAULT_COLLECTIONS)
+    except ValueError as error:
+        raise HTTPException(status_code=422, detail=str(error)) from error
+
+    scoped_bbox, empty_intersection = bbox_for_scope((west, south, east, north), park_id)
+    if empty_intersection:
+        return {
+            'items': [],
+            'count': 0,
+            'collections': selected,
+            'source': 'Microsoft Planetary Computer STAC',
+        }
+    try:
         items = await client.search(
-            bbox=(west, south, east, north),
+            bbox=scoped_bbox,
             start_date=start_date,
             end_date=end_date,
             collections=selected,
             limit=limit,
         )
-    except ValueError as error:
-        raise HTTPException(status_code=422, detail=str(error)) from error
     except Exception as error:
         raise HTTPException(
             status_code=502,

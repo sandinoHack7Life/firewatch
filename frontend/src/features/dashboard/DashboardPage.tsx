@@ -26,7 +26,7 @@ import { useTranslation } from 'react-i18next';
 
 export function DashboardPage() {
   const { t } = useTranslation();
-  const { filters } = useOperationalContext();
+  const { filters, selectedParkLabel } = useOperationalContext();
   const [summary, setSummary] = useState<DashboardSummary | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -76,8 +76,8 @@ export function DashboardPage() {
     <div className="page-stack">
       <header className="page-header">
         <div>
-          <p className="eyebrow">{t('Operational picture')} · {t(filters.region)}</p>
-          <h2>{t('Global Fire Activity')}</h2>
+          <p className="eyebrow">{t('Operational picture')} · {selectedParkLabel}</p>
+          <h2>{t('Fire activity in {{area}}', { area: selectedParkLabel })}</h2>
           <p className="page-description">{t('NASA source-attributed active-event and thermal-anomaly observations for the selected UTC period.')}</p>
         </div>
         <span className="live-source-tag">{loading ? t('Updating') : t('LIVE SOURCE DATA')}</span>
@@ -89,7 +89,7 @@ export function DashboardPage() {
         <article className="stat-card">
           <p>{t('Source records')}</p>
           <h3>{summary.total_detections.toLocaleString()}</h3>
-          <span>{t('Records in selected region and period')}</span>
+          <span>{t('Records for {{area}} and selected period', { area: selectedParkLabel })}</span>
         </article>
         <article className="stat-card">
           <p>{t('MODIS thermal detections')}</p>
@@ -107,6 +107,11 @@ export function DashboardPage() {
           <span>{t('Event reports; not hotspot or FRP measurements')}</span>
         </article>
       </section>
+      <p className="chart-caption field-verification-summary">
+        {t('{{count}} deteções com verificação de campo concluída.', {
+          count: summary.field_verified_detections.toLocaleString(),
+        })}
+      </p>
 
       {summary.total_detections === 0 && (
         <section className="section-card empty-live-state">

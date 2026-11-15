@@ -1,6 +1,13 @@
 from fastapi import APIRouter, HTTPException, Query
 
-from app.container import fire_repository
+from app.api.v1.endpoints.park_scope import (
+    DEFAULT_PARK_ID,
+    list_scoped_records,
+    require_registered_park,
+)
+from app.container import field_visit_repository, fire_repository
+from app.services.field_verification import annotate_observations
+from app.services.parks.registry import filter_records_by_park
 
 router = APIRouter()
 
@@ -33,8 +40,11 @@ def list_fires(
     search: str | None = Query(default=None),
     bbox: str | None = Query(default=None),
     min_frp: float | None = Query(default=None, ge=0),
+    park_id: str | None = Query(default=None),
 ) -> dict[str, object]:
-    records = fire_repository.list_records(
+    records = list_scoped_records(
+        fire_repository.list_records,
+        park_id=park_id,
         sensors=[sensor] if sensor else None,
         start_date=start_date,
         end_date=end_date,
@@ -42,6 +52,11 @@ def list_fires(
         min_frp=min_frp,
         search=search,
         limit=None,
+    )
+    selected_park_id = park_id or DEFAULT_PARK_ID
+    records = annotate_observations(
+        records,
+        field_visit_repository.list_visits(selected_park_id),
     )
     total = len(records)
     start = (page - 1) * page_size
@@ -56,8 +71,18 @@ def list_fires(
 
 
 @router.get('/fires/{observation_id}')
-def fire_detail(observation_id: str) -> dict[str, object]:
+def fire_detail(
+    observation_id: str,
+    park_id: str = Query(default=DEFAULT_PARK_ID),
+) -> dict[str, object]:
+    require_registered_park(park_id)
     item = fire_repository.get_record(observation_id)
     if item is None:
         raise HTTPException(status_code=404, detail='Observation not found.')
+    if not filter_records_by_park([item], park_id):
+        raise HTTPException(status_code=404, detail='Observation not found in the selected park.')
+    item = annotate_observations(
+        [item],
+        field_visit_repository.list_visits(park_id),
+    )[0]
     return {'item': item, 'source': item.get('source')}

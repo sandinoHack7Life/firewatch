@@ -41,9 +41,9 @@ The project architecture is AI-ready, but the implementation remains deferred un
 - Historical analytics and scientific transparency
 
 ### Phase 5 — Human verification
-- Shared-key protected field-visit records
+- Park-scoped field observation reports linked to FIRMS detections or manual patrols
 - Separate satellite and field coordinates and timestamps
-- Encrypted local drafts with online synchronization
+- PDF/DOCX report export and email dispatch
 - Park-specific email watchlists
 
 ### Phase 6 — Reports and operations

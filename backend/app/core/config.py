@@ -32,7 +32,6 @@ class Settings(BaseSettings):
     field_visits_database_path: str = str(
         Path.home() / '.modis-viirs-firewatch' / 'field_visits.sqlite3'
     )
-    field_data_access_key: str = ''
 
     model_config = SettingsConfigDict(
         env_file=PROJECT_ENV_FILE,

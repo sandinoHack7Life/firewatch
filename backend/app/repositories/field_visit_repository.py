@@ -10,7 +10,7 @@ from typing import Any, Iterator
 
 
 class FieldVisitRepository:
-    """Private, separate SQLite storage for field verification records."""
+    """Separate SQLite storage for field verification records."""
 
     def __init__(self, database_path: str | Path) -> None:
         self.database_path = Path(database_path).expanduser()

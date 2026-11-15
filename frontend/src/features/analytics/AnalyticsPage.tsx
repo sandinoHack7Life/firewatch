@@ -22,7 +22,10 @@ import { useTranslation } from 'react-i18next';
 
 export function AnalyticsPage() {
   const { t } = useTranslation();
-  const { filters } = useOperationalContext();
+  const { filters, selectedParkLabel, telemetry } = useOperationalContext();
+  const firmsSourceErrors = Object.entries(telemetry?.sources ?? {})
+    .filter(([source, status]) => source !== 'NASA_EONET' && status.status === 'error')
+    .map(([source]) => source);
   const [trends, setTrends] = useState<Array<{
     date: string;
     total: number;
@@ -80,7 +83,7 @@ export function AnalyticsPage() {
     <div className="page-stack">
       <header className="page-header">
         <div>
-          <p className="eyebrow">{t('Historical Analytics')} · {t(filters.region)}</p>
+          <p className="eyebrow">{t('Historical Analytics')} · {selectedParkLabel}</p>
           <h2>{t('Sensor Activity & Anomaly Analysis')}</h2>
           <p className="page-description">{t('Statistics are computed from real FIRMS thermal detections in the selected UTC window; event reports without FRP are excluded.')}</p>
         </div>
@@ -112,7 +115,15 @@ export function AnalyticsPage() {
                   <Bar yAxisId="frp" dataKey="frp_mw_total" fill="#edb34d" fillOpacity={0.65} name="FRP sum (MW)" />
                 </ComposedChart>
               </ResponsiveContainer>
-            ) : <p className="chart-empty">{t('No FIRMS thermal observations are available for this range.')}</p>}
+            ) : (
+              <p className="chart-empty">
+                {firmsSourceErrors.length > 0
+                  ? t('FIRMS feeds failed: {{feeds}}. Check the latest source status; no substitute data are shown.', {
+                    feeds: firmsSourceErrors.join(', '),
+                  })
+                  : t('No FIRMS thermal observations are available for this range.')}
+              </p>
+            )}
           </div>
           <p className="chart-caption">{t('Shaded band is the selected-window mean ± population standard deviation. It is an exploratory baseline, not a forecast or incident confirmation.')}</p>
         </article>

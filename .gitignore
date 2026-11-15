@@ -13,7 +13,8 @@ backend/.venv/
 
 # Environment
 .env
-.env.local
+.env.*
+!.env.example
 
 # OS
 .DS_Store
@@ -22,9 +23,27 @@ Thumbs.db
 # Logs
 *.log
 
-# Dados de producao
-data/
+# Local databases and uploads
+*.sqlite
 *.sqlite3
+*.sqlite-*
+*.db
+*.db-*
+uploads/
+**/uploads/
+
+# Local credentials and private keys
+**/credentials.json
+**/secrets.json
+**/service-account*.json
+**/.netrc
+**/.pypirc
+**/.aws/credentials
+**/*.pem
+**/*.p12
+**/*.pfx
+**/*.key
+
+# Local application data
+/data/
 .pytest_cache/
-.env.*
-!.env.example

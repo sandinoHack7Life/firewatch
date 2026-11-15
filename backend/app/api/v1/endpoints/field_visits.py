@@ -1,81 +1,84 @@
 from __future__ import annotations
 
+import base64
 from datetime import datetime, timezone
+from uuid import uuid4
 
-from fastapi import APIRouter, Depends, Header, HTTPException, Response
+from fastapi import APIRouter, HTTPException, Query, Response
 
 from app.container import field_visit_repository, fire_repository
-from app.core.config import get_settings
-from app.core.field_access import MIN_FIELD_ACCESS_KEY_LENGTH, has_valid_field_access_key
-from app.schemas.field_visit import FieldVisitPayload
+from app.schemas.field_visit import FieldVisitDispatchRequest, FieldVisitPayload
 from app.services.firms.client import FIRMS_SOURCES
-from app.services.parks.registry import get_park, point_in_park
+from app.api.v1.endpoints.park_scope import DEFAULT_PARK_ID, require_registered_park
+from app.services.parks.registry import point_in_park
+from app.services.runtime import alert_service
 
 router = APIRouter()
 
 
-def require_field_access_key(
-    x_field_data_key: str | None = Header(default=None, alias='X-Field-Data-Key'),
-) -> None:
-    configured_key = get_settings().field_data_access_key
-    if len(configured_key) < MIN_FIELD_ACCESS_KEY_LENGTH:
-        raise HTTPException(
-            status_code=503,
-            detail='Field visit APIs are disabled until FIELD_DATA_ACCESS_KEY is configured.',
-        )
-    if not has_valid_field_access_key(configured_key, x_field_data_key):
-        raise HTTPException(status_code=403, detail='Field data access key is invalid.')
-
-
 def _validated_record(payload: FieldVisitPayload) -> dict[str, object]:
-    try:
-        get_park(payload.park_id)
-    except KeyError as error:
-        raise HTTPException(status_code=422, detail='Unsupported national park.') from error
-    if payload.satellite_feed not in FIRMS_SOURCES:
-        raise HTTPException(status_code=422, detail='Field visits require a NASA FIRMS feed.')
-    observation = fire_repository.get_record(
-        payload.satellite_observation_id,
-        feed=payload.satellite_feed,
-    )
-    if observation is None or observation.get('instrument') not in {'MODIS', 'VIIRS'}:
-        raise HTTPException(
-            status_code=404,
-            detail='The referenced NASA FIRMS satellite observation was not found.',
+    require_registered_park(payload.park_id)
+    observation = None
+    if payload.record_type == 'detection':
+        if payload.satellite_feed not in FIRMS_SOURCES or not payload.satellite_observation_id:
+            raise HTTPException(status_code=422, detail='Select a valid NASA FIRMS detection.')
+        observation = fire_repository.get_record(
+            payload.satellite_observation_id,
+            feed=payload.satellite_feed,
         )
-    latitude = float(observation['latitude'])
-    longitude = float(observation['longitude'])
-    if not point_in_park(longitude, latitude, payload.park_id):
+        if observation is None or observation.get('instrument') not in {'MODIS', 'VIIRS'}:
+            raise HTTPException(
+                status_code=404,
+                detail='The referenced NASA FIRMS satellite observation was not found.',
+            )
+        latitude = float(observation['latitude'])
+        longitude = float(observation['longitude'])
+        if not point_in_park(longitude, latitude, payload.park_id):
+            raise HTTPException(
+                status_code=422,
+                detail='The referenced satellite detection is outside the selected park boundary.',
+            )
+    elif payload.satellite_feed is not None or payload.satellite_observation_id is not None:
+        raise HTTPException(status_code=422, detail='Manual patrol records cannot reference a satellite detection.')
+    elif payload.field_latitude is not None and not point_in_park(
+        payload.field_longitude,
+        payload.field_latitude,
+        payload.park_id,
+    ):
         raise HTTPException(
             status_code=422,
-            detail='The referenced satellite detection is outside the selected park boundary.',
+            detail='The field coordinates are outside the selected park boundary.',
         )
+
     visit: dict[str, object] = payload.model_dump(mode='json')
+    created_at = payload.form_created_at_utc
+    report_reference = payload.report_reference or (
+        f'FW-{payload.park_id[:3].upper()}-{created_at.year}-{uuid4().hex[:16].upper()}'
+    )
     visit.update({
-        'satellite_latitude': latitude,
-        'satellite_longitude': longitude,
-        'satellite_detection_date': observation.get('acquisition_date'),
-        'satellite_detection_time_utc': observation.get('acquisition_time'),
-        'satellite': observation.get('satellite'),
-        'instrument': observation.get('instrument'),
-        'satellite_feed': observation.get('feed'),
-        'source': observation.get('source'),
+        'report_reference': report_reference,
+        'satellite_latitude': float(observation['latitude']) if observation else None,
+        'satellite_longitude': float(observation['longitude']) if observation else None,
+        'satellite_detection_date': observation.get('acquisition_date') if observation else None,
+        'satellite_detection_time_utc': observation.get('acquisition_time') if observation else None,
+        'satellite': observation.get('satellite') if observation else None,
+        'instrument': observation.get('instrument') if observation else None,
+        'satellite_feed': observation.get('feed') if observation else None,
+        'source': observation.get('source') if observation else 'Manual field report',
         'updated_at_utc': datetime.now(timezone.utc).isoformat(),
     })
     return visit
 
 
-@router.get('/field-visits', dependencies=[Depends(require_field_access_key)])
-def list_field_visits(park_id: str | None = None) -> dict[str, object]:
-    if park_id:
-        try:
-            get_park(park_id)
-        except KeyError as error:
-            raise HTTPException(status_code=422, detail='Unsupported national park.') from error
+@router.get('/field-visits')
+def list_field_visits(
+    park_id: str = Query(default=DEFAULT_PARK_ID),
+) -> dict[str, object]:
+    require_registered_park(park_id)
     return {'items': field_visit_repository.list_visits(park_id)}
 
 
-@router.post('/field-visits', dependencies=[Depends(require_field_access_key)])
+@router.post('/field-visits')
 def create_field_visit(
     payload: FieldVisitPayload,
     response: Response,
@@ -85,7 +88,7 @@ def create_field_visit(
     return {'item': visit, 'created': created}
 
 
-@router.put('/field-visits/{client_id}', dependencies=[Depends(require_field_access_key)])
+@router.put('/field-visits/{client_id}')
 def update_field_visit(
     client_id: str,
     payload: FieldVisitPayload,
@@ -96,3 +99,37 @@ def update_field_visit(
     if visit is None:
         raise HTTPException(status_code=404, detail='Field visit was not found.')
     return {'item': visit}
+
+
+@router.post('/field-visits/{client_id}/dispatch')
+async def dispatch_field_visit_report(
+    client_id: str,
+    payload: FieldVisitDispatchRequest,
+) -> dict[str, object]:
+    visit = field_visit_repository.get_visit(client_id)
+    if visit is None:
+        raise HTTPException(status_code=404, detail='Field visit was not found.')
+
+    recipients = ['firewatch.mz.alertas@gmail.com']
+    if payload.additional_recipient and payload.additional_recipient not in recipients:
+        recipients.append(payload.additional_recipient)
+    attachments = [
+        (
+            attachment.filename,
+            base64.b64decode(attachment.content_base64, validate=True),
+            attachment.content_type,
+        )
+        for attachment in payload.attachments
+    ]
+    report_reference = str(visit.get('report_reference') or client_id)
+    try:
+        item = await alert_service.send_field_report(
+            recipients,
+            f'Ficha de Observação de Campo {report_reference}',
+            payload.notes,
+            attachments,
+            client_id,
+        )
+    except RuntimeError as error:
+        raise HTTPException(status_code=503, detail=str(error)) from error
+    return {'item': item}

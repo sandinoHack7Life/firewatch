@@ -1,0 +1,33 @@
+# Environment and local credentials
+.env
+.env.*
+!.env.example
+**/credentials.json
+**/secrets.json
+**/service-account*.json
+**/.netrc
+**/.pypirc
+**/.aws/credentials
+**/*.pem
+**/*.p12
+**/*.pfx
+**/*.key
+
+# Local databases and uploads
+*.sqlite
+*.sqlite3
+*.sqlite-*
+*.db
+*.db-*
+uploads/
+**/uploads/
+
+# Python and installed packages
+__pycache__/
+**/__pycache__/
+.venv/
+**/.venv/
+node_modules/
+**/node_modules/
+*.py[cod]
+.pytest_cache/

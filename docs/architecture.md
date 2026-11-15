@@ -32,12 +32,12 @@ The backend is a FastAPI service with the following responsibilities:
 2. The ingestion layer validates, normalizes, and stores source observations.
 3. Park selection filters stored observations in memory against mapped Polygon/MultiPolygon boundaries.
 4. Harmonization, calendar, analytics, and report services operate on source records and keep provenance attached.
-5. Protected field-visit APIs validate references to real FIRMS observations and store human verification separately from satellite data.
-6. The frontend renders the selected park geometry, real observation layers, and private operational workflows. Public exports never include field visits.
+5. Field-visit APIs validate references to real FIRMS observations and store human verification separately from satellite data.
+6. The frontend renders the selected park geometry, real observation layers, and field-report workflows. Public fire-data exports never include field visits.
 
 ## Mozambique park boundaries and field data
 
-The eight park geometries are attributed to OpenStreetMap contributors under ODbL 1.0. They are mapped estimates, not legal or dispatch boundaries. Field records use a separate SQLite database and require a shared `FIELD_DATA_ACCESS_KEY` of at least 32 characters. The browser does not persist that key. Offline drafts are encrypted with AES-GCM; satellite and field coordinates and UTC/local timestamps remain separate.
+The eight park geometries are attributed to OpenStreetMap contributors under ODbL 1.0. They are mapped estimates, not legal or dispatch boundaries. Field reports use a separate SQLite database and keep satellite and confirmed field coordinates distinct. Field-report API endpoints do not require authentication; protect access to the service at the network or deployment layer because records may contain sensitive operational notes, evidence, and coordinates. PDF and DOCX exports are generated in the browser and can be dispatched through the configured backend email service.
 
 Docker Compose exposes the frontend on port 5174 and backend/API on port 8000. A named volume persists the SQLite operational data independently from the PostgreSQL service volume.
 

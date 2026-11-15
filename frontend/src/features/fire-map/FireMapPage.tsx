@@ -14,8 +14,6 @@ type SensorMode = 'both' | 'MODIS' | 'VIIRS';
 type DisplayMode = 'real' | 'simulation';
 type CalendarView = 'daily' | 'weekly' | 'monthly';
 
-const DEFAULT_PARK_ID: ParkId = 'gorongosa';
-
 const baseLayers = {
   OpenStreetMap: {
     url: 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
@@ -88,13 +86,25 @@ function MapExtentControl({ onBounds }: { onBounds: (bbox: string) => void }) {
   return null;
 }
 
-function FitParkBounds({ park }: { park: NationalPark }) {
+function FitParkBounds({ parks, selectedPark }: { parks: NationalPark[]; selectedPark: NationalPark | null }) {
   const map = useMap();
   useEffect(() => {
-    const bounds = L.geoJSON(park.geometry).getBounds();
+    const bounds = L.latLngBounds([]);
+    (selectedPark ? [selectedPark] : parks).forEach((park) => {
+      bounds.extend(L.geoJSON(park.geometry).getBounds());
+    });
     if (bounds.isValid()) map.fitBounds(bounds.pad(0.08), { maxZoom: 9, animate: false });
-  }, [map, park]);
+  }, [map, parks, selectedPark]);
   return null;
+}
+
+function fieldVisitUrl(parkId: ParkId, observation: FireObservation): string {
+  const params = new URLSearchParams({
+    observation_id: observation.observation_id,
+    feed: observation.feed ?? '',
+  });
+  if (parkId) params.set('park_id', parkId);
+  return `/field-visits?${params.toString()}`;
 }
 
 function illustrativeRecords(park: NationalPark): FireObservation[] {
@@ -122,9 +132,15 @@ function illustrativeRecords(park: NationalPark): FireObservation[] {
 
 export function FireMapPage() {
   const { t } = useTranslation();
-  const { filters, setMapBounds, telemetry } = useOperationalContext();
-  const [parks, setParks] = useState<NationalPark[]>([]);
-  const [parkId, setParkId] = useState<ParkId>(DEFAULT_PARK_ID);
+  const {
+    filters,
+    setMapBounds,
+    telemetry,
+    parks,
+    selectedPark,
+    selectedParkId,
+    selectedParkLabel,
+  } = useOperationalContext();
   const [sensorMode, setSensorMode] = useState<SensorMode>('both');
   const [displayMode, setDisplayMode] = useState<DisplayMode>('real');
   const [calendarView, setCalendarView] = useState<CalendarView>('daily');
@@ -142,24 +158,11 @@ export function FireMapPage() {
   const [imageryError, setImageryError] = useState<string | null>(null);
   const [hasHarmonizedMatch, setHasHarmonizedMatch] = useState<boolean | null>(null);
 
-  const selectedPark = parks.find((park) => park.id === parkId);
-
-  useEffect(() => {
-    let active = true;
-    api.getParks()
-      .then((response) => { if (active) setParks(response.items); })
-      .catch((reason: unknown) => {
-        if (active) setError(reason instanceof Error ? t(reason.message) : t('National park boundaries could not be loaded.'));
-      });
-    return () => { active = false; };
-  }, [t]);
-
   useEffect(() => {
     let active = true;
     setLoading(true);
     api.getFireMap({
       ...filters,
-      park_id: parkId,
       sensor: sensorMode === 'both' ? undefined : sensorMode,
       limit: 5000,
     })
@@ -176,13 +179,12 @@ export function FireMapPage() {
         if (active) setLoading(false);
       });
     return () => { active = false; };
-  }, [filters, parkId, sensorMode, telemetry?.last_sync_utc, t]);
+  }, [filters, sensorMode, telemetry?.last_sync_utc, t]);
 
   useEffect(() => {
     let active = true;
     api.getCalendar({
       ...filters,
-      park_id: parkId,
       view: calendarView,
       sensor: sensorMode === 'both' ? undefined : sensorMode,
     }).then((response) => {
@@ -191,7 +193,7 @@ export function FireMapPage() {
       if (active) setError(reason instanceof Error ? t(reason.message) : t('Park detection calendar could not be loaded.'));
     });
     return () => { active = false; };
-  }, [calendarView, filters, parkId, sensorMode, t]);
+  }, [calendarView, filters, sensorMode, t]);
 
   const realRecords = useMemo(() => records.filter((record) => {
     const sensor = getFirmsSensor(record);
@@ -207,8 +209,8 @@ export function FireMapPage() {
   }), [records, eonetVisible, frpThreshold, sensorMode]);
 
   const simulationRecords = useMemo(
-    () => selectedPark ? illustrativeRecords(selectedPark) : [],
-    [selectedPark],
+    () => (selectedPark ? [selectedPark] : parks).flatMap(illustrativeRecords),
+    [parks, selectedPark],
   );
   const visibleRecords = displayMode === 'real' ? realRecords : simulationRecords;
 
@@ -222,8 +224,15 @@ export function FireMapPage() {
 
   const imagery = planetaryItems.find((item) => item.id === selectedImagery);
   const hasSatelliteRecords = records.some((record) => getFirmsSensor(record) !== null);
-  const firmsCredentialsRequired = Object.entries(telemetry?.sources ?? {})
-    .some(([source, status]) => source !== 'NASA_EONET' && status.status === 'credentials_required');
+  const firmsSources = Object.entries(telemetry?.sources ?? {})
+    .filter(([source]) => source !== 'NASA_EONET');
+  const firmsCredentialsRequired = firmsSources
+    .some(([, status]) => status.status === 'credentials_required');
+  const firmsSourceErrors = firmsSources
+    .filter(([, status]) => status.status === 'error')
+    .map(([source]) => source);
+  const firmsSourcesOnline = firmsSources.length > 0
+    && firmsSources.every(([, status]) => status.status === 'online');
 
   const inspectObservation = async (record: FireObservation) => {
     if (record.instrument === 'SIMULATION') {
@@ -250,6 +259,7 @@ export function FireMapPage() {
         bbox,
         start_date: filters.start_date ?? record.acquisition_date,
         end_date: filters.end_date ?? record.acquisition_date,
+        park_id: selectedParkId,
         limit: 12,
       }),
       api.getHarmonizationMatches(filters),
@@ -274,26 +284,19 @@ export function FireMapPage() {
     <div className="page-stack">
       <header className="page-header">
         <div>
-          <p className="eyebrow">{t('Mozambique National Parks')} · {selectedPark?.province ?? t('Loading boundary')}</p>
+          <p className="eyebrow">{t('Mozambique National Parks')} · {selectedParkLabel}</p>
           <h2>{t('Firewatch Command Map')}</h2>
           <p className="page-description">{t('Satellite thermal anomalies support field planning; they do not automatically confirm wildfires.')}</p>
         </div>
         <span className="map-record-count">
-          {displayMode === 'real' ? t('{{count}} real records', { count: visibleRecords.length.toLocaleString() }) : t('SIMULATION — illustrative only')}
+          {displayMode === 'real'
+            ? t('{{count}} real records · {{area}}', { count: visibleRecords.length.toLocaleString(), area: selectedParkLabel })
+            : t('SIMULATION — illustrative only')}
           {loading ? ` · ${t('refreshing')}` : ''}
         </span>
       </header>
 
       <section className="map-controls section-card">
-        <label>
-          {t('National park')}
-          <select value={parkId} onChange={(event) => {
-            setParkId(event.target.value as ParkId);
-            setSelected(null);
-          }}>
-            {parks.map((park) => <option key={park.id} value={park.id}>{park.name} · {park.province}</option>)}
-          </select>
-        </label>
         <label>
           {t('Satellite sensors')}
           <select value={sensorMode} onChange={(event) => setSensorMode(event.target.value as SensorMode)}>
@@ -345,8 +348,26 @@ export function FireMapPage() {
           {' '}{t('NASA EONET events are a separate evidence layer; no real-mode hotspot locations are simulated.')}
         </p>
       )}
+      {!loading && !hasSatelliteRecords && firmsSourceErrors.length > 0 && (
+        <p className="inline-error" role="alert">
+          {t('FIRMS feeds failed: {{feeds}}. Check the latest source status; no substitute data are shown.', {
+            feeds: firmsSourceErrors.join(', '),
+          })}
+        </p>
+      )}
+      {!loading && !hasSatelliteRecords && !firmsCredentialsRequired
+        && firmsSourceErrors.length === 0 && firmsSourcesOnline && (
+          <p className="scientific-note">
+            {t('No detections matched {{area}} for this period. FIRMS is fetched for Mozambique and filtered by the selected boundary; no simulated observations are used.', {
+              area: selectedParkLabel,
+            })}
+          </p>
+        )}
       {selectedPark && (
         <p className="boundary-attribution">
+          {selectedPark.boundary_quality === 'approximate' && (
+            <strong>{t('Approximate FIRMS extent; not a legal boundary.')} </strong>
+          )}
           {t(selectedPark.boundary_note)} {t('Park boundary label')} {selectedPark.boundary_source} ({selectedPark.boundary_license}).
           {' '}<a href={selectedPark.boundary_url} target="_blank" rel="noreferrer">{t('View mapped boundary source')}</a>.
         </p>
@@ -354,7 +375,7 @@ export function FireMapPage() {
 
       <section className="section-card park-calendar-strip">
         <div className="park-calendar-heading">
-          <div><p className="eyebrow">{t('Detection recurrence')} · {selectedPark?.name ?? parkId}</p><h3>{t('Historical activity')}</h3></div>
+          <div><p className="eyebrow">{t('Detection recurrence')} · {selectedParkLabel}</p><h3>{t('Historical activity')}</h3></div>
           <label>{t('Aggregation')}
             <select value={calendarView} onChange={(event) => setCalendarView(event.target.value as CalendarView)}>
               <option value="daily">{t('Daily')}</option><option value="weekly">{t('Weekly')}</option><option value="monthly">{t('Monthly')}</option>
@@ -369,7 +390,7 @@ export function FireMapPage() {
               </span>
             ))}
           </div>
-        ) : <p className="chart-caption">{t('No detections in the selected park and date range. Empty dates are not interpreted as zero fire risk.')}</p>}
+        ) : <p className="chart-caption">{t('No detections in {{area}} and date range. Empty dates are not interpreted as zero fire risk.', { area: selectedParkLabel })}</p>}
       </section>
 
       <section className="map-workspace">
@@ -386,14 +407,16 @@ export function FireMapPage() {
             scrollWheelZoom
             className="leaflet-map"
           >
-            {selectedPark && (
+            {parks.length > 0 && (
               <>
-                <FitParkBounds park={selectedPark} />
-                <LeafletGeoJSON
-                  key={selectedPark.id}
-                  data={selectedPark.geometry}
-                  style={{ color: '#f0a234', weight: 2, fillColor: '#f0a234', fillOpacity: 0.06, dashArray: '5 4' }}
-                />
+                <FitParkBounds parks={parks} selectedPark={selectedPark} />
+                {(selectedPark ? [selectedPark] : parks).map((park) => (
+                  <LeafletGeoJSON
+                    key={park.id}
+                    data={park.geometry}
+                    style={{ color: '#f0a234', weight: 2, fillColor: '#f0a234', fillOpacity: 0.06, dashArray: '5 4' }}
+                  />
+                ))}
               </>
             )}
             <TileLayer
@@ -438,6 +461,9 @@ export function FireMapPage() {
                           <div>FRP: {record.frp === null || record.frp === undefined ? t('not reported') : `${record.frp} MW`}</div>
                           <div>{t('Confidence:')} {record.confidence ?? t('not reported')}</div>
                           <div>{t('Acquisition:')} {record.acquisition_date} {record.acquisition_time ?? ''} UTC</div>
+                          {record.field_verification_status && (
+                            <div>{t('Field verification:')} {t(record.field_verification_status)} · {record.field_report_reference}</div>
+                          )}
                           <button type="button" onClick={() => void inspectObservation(record)}>{t('Inspect source and imagery')}</button>
                         </>
                       )}
@@ -464,6 +490,7 @@ export function FireMapPage() {
                 <dt>{t('Position')}</dt><dd>{selected.latitude.toFixed(5)}, {selected.longitude.toFixed(5)}</dd>
                 <dt>FRP</dt><dd>{selected.frp ?? t('Not reported')}{selected.frp === null || selected.frp === undefined ? '' : ' MW'}</dd>
                 <dt>{t('Confidence')}</dt><dd>{selected.confidence ?? t('Not reported')}</dd>
+                <dt>{t('Field verification')}</dt><dd>{selected.field_verification_status ? `${t(selected.field_verification_status)} · ${selected.field_report_reference ?? ''}` : t('Not verified')}</dd>
                 <dt>{t('Cross-sensor match')}</dt><dd>{hasHarmonizedMatch === null ? t('Checking…') : hasHarmonizedMatch ? t('Potential proximity match') : t('No match in current selection')}</dd>
                 {selected.event_magnitude !== null && selected.event_magnitude !== undefined && (
                   <><dt>{t('EONET reported magnitude')}</dt><dd>{selected.event_magnitude} {selected.event_magnitude_unit}</dd></>
@@ -478,9 +505,9 @@ export function FireMapPage() {
                   {getFirmsSensor(selected) && selected.feed && (
                     <Link
                       className="field-visit-link"
-                      to={`/field-visits?park_id=${parkId}&observation_id=${encodeURIComponent(selected.observation_id)}&feed=${encodeURIComponent(selected.feed)}`}
+                      to={fieldVisitUrl(selectedParkId, selected)}
                     >
-                      {t('Create private field verification record')}
+                      {t('Create Field Verification Report')}
                     </Link>
                   )}
                 </>

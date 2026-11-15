@@ -1,8 +1,9 @@
 from fastapi import APIRouter, HTTPException, Query
 
 from app.api.v1.endpoints.fires import parse_bbox
-from app.container import fire_repository
-from app.services.parks.registry import filter_records_by_park, get_park, intersect_bboxes
+from app.api.v1.endpoints.park_scope import DEFAULT_PARK_ID, list_scoped_records
+from app.container import field_visit_repository, fire_repository
+from app.services.field_verification import annotate_observations
 
 router = APIRouter()
 
@@ -17,26 +18,20 @@ def fire_map(
     min_frp: float | None = Query(default=None, ge=0),
     limit: int = Query(default=1000, ge=1, le=5000),
 ) -> dict[str, object]:
-    request_bbox = parse_bbox(bbox)
-    if park_id:
-        try:
-            park_bbox = get_park(park_id)['bbox']
-        except KeyError as error:
-            raise HTTPException(status_code=422, detail='Unsupported national park.') from error
-        if request_bbox:
-            request_bbox = intersect_bboxes(request_bbox, park_bbox)
-        else:
-            request_bbox = park_bbox
-    records = [] if park_id and request_bbox is None else fire_repository.list_records(
+    records = list_scoped_records(
+        fire_repository.list_records,
+        park_id=park_id,
         sensors=[sensor] if sensor else None,
         start_date=start_date,
         end_date=end_date,
-        bbox=request_bbox,
+        bbox=parse_bbox(bbox),
         min_frp=min_frp,
         limit=None,
     )
-    if park_id and records:
-        records = filter_records_by_park(records, park_id)
+    records = annotate_observations(
+        records,
+        field_visit_repository.list_visits(park_id or DEFAULT_PARK_ID),
+    )
     records = records[:limit]
     return {
         'items': records,

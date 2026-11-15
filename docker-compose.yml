@@ -33,7 +33,6 @@ services:
       OBSERVATION_DATABASE_PATH: ${OBSERVATION_DATABASE_PATH:-/root/.modis-viirs-firewatch/observations.sqlite3}
       ALERTS_DATABASE_PATH: ${ALERTS_DATABASE_PATH:-/root/.modis-viirs-firewatch/alerts.sqlite3}
       FIELD_VISITS_DATABASE_PATH: ${FIELD_VISITS_DATABASE_PATH:-/root/.modis-viirs-firewatch/field_visits.sqlite3}
-      FIELD_DATA_ACCESS_KEY: ${FIELD_DATA_ACCESS_KEY:-}
       SMTP_HOST: ${SMTP_HOST:-}
       SMTP_PORT: ${SMTP_PORT:-587}
       SMTP_USER: ${SMTP_USER:-}

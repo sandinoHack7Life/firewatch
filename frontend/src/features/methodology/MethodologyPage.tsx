@@ -15,7 +15,7 @@ export function MethodologyPage() {
       <section className="section-card">
         <h3>{t('Live observation sources')}</h3>
         <ul className="key-list">
-          <li><strong>NASA FIRMS:</strong> {t('near-real-time MODIS, Suomi NPP VIIRS, and NOAA-20 VIIRS active-fire CSV feeds. Direct feeds require an operator-configured')} <code>FIRMS_MAP_KEY</code>.</li>
+          <li><strong>NASA FIRMS:</strong> {t('Near-real-time MODIS, Suomi NPP VIIRS, and NOAA-20 VIIRS active-fire CSV feeds require a server-side key configured by an operator.')}</li>
           <li><strong>NASA EONET:</strong> {t('open wildfire event reports are queried without credentials. EONET geometries and event links are not thermal anomaly measurements; FRP and sensor confidence remain unavailable unless the source reports them.')}</li>
           <li><strong>Microsoft Planetary Computer STAC:</strong> {t('public item searches provide acquisition metadata, footprints, cloud cover when present, provider provenance, COG assets, and item previews for MODIS fire products, Sentinel-2 L2A, and Landsat C2 L2.')}</li>
           <li>{t('Each API response preserves `source` / `feed` provenance. Source errors appear in system telemetry; the application does not substitute sample records.')}</li>

@@ -10,11 +10,23 @@ import httpx
 
 from app.core.config import Settings
 from app.repositories.fire_repository import FireRepository
-from app.services.firms.client import FIRMSClient, FIRMS_SOURCES
+from app.services.firms.client import FIRMSClient, FIRMSResponseError, FIRMS_SOURCES
 from app.services.firms.eonet import EONETClient
 from app.services.parks.registry import MOZAMBIQUE_FIRMS_BBOX
 
 logger = logging.getLogger(__name__)
+
+
+def _firms_error_message(error: BaseException) -> str:
+    if isinstance(error, httpx.HTTPStatusError):
+        return f'NASA FIRMS returned HTTP {error.response.status_code}.'
+    if isinstance(error, httpx.TimeoutException):
+        return 'NASA FIRMS request timed out.'
+    if isinstance(error, httpx.RequestError):
+        return 'NASA FIRMS network request failed.'
+    if isinstance(error, FIRMSResponseError):
+        return str(error)
+    return f'NASA FIRMS request failed ({type(error).__name__}).'
 
 
 class LiveSyncService:
@@ -48,7 +60,7 @@ class LiveSyncService:
                     work: dict[str, Any] = {
                         'NASA_EONET': self.eonet.fetch_events(client),
                     }
-                    if self.settings.firms_map_key:
+                    if self.settings.firms_map_key.strip():
                         for feed in FIRMS_SOURCES:
                             work[feed] = self.firms.fetch_source(
                                 feed,
@@ -71,9 +83,7 @@ class LiveSyncService:
                 for feed, result in zip(names, results, strict=True):
                     if isinstance(result, BaseException):
                         if feed in FIRMS_SOURCES:
-                            message = (
-                                f'NASA FIRMS request failed ({type(result).__name__}).'
-                            )
+                            message = _firms_error_message(result)
                         else:
                             message = str(result)
                         self.source_status[feed] = {
@@ -146,9 +156,8 @@ class LiveSyncService:
 
     async def run_forever(self) -> None:
         while True:
-            await asyncio.sleep(max(15, self.settings.sync_interval_seconds))
             await self.sync_once()
+            await asyncio.sleep(max(15, self.settings.sync_interval_seconds))
 
     async def start(self) -> asyncio.Task[None]:
-        await self.sync_once()
         return asyncio.create_task(self.run_forever(), name='live-fire-data-sync')

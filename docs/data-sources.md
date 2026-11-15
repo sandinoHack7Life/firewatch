@@ -6,7 +6,7 @@ FIRMS is the source for satellite active-fire and thermal-anomaly observations. 
 
 Without a key, these FIRMS feeds report `credentials_required`; the application does not fabricate replacement MODIS/VIIRS observations. Configure `FIRMS_MAP_KEY` in the project-root `.env` and restart the backend to activate them.
 
-For quota efficiency, each sync makes one request per FIRMS feed over Mozambique's national bbox (`30.2,-26.9,40.9,-10.4`), not one request per park. The eight parks are selected by in-memory point-in-polygon filtering after retrieval.
+For quota efficiency, each sync makes one request per FIRMS feed over Mozambique's national bbox (`30.2,-26.9,40.9,-10.4`), not one request per park. NASA FIRMS observations are selected by in-memory point-in-polygon filtering against the currently selected mapped protected area after retrieval.
 
 ## NASA EONET
 
@@ -24,9 +24,17 @@ STAC searches are performed on demand for the `modis-14A1-061`, `modis-14A2-061`
 - Different sensors have different resolution, overpass timing, confidence definitions, and processing streams. A cross-sensor spatial-temporal association is a candidate match, not ground-truth equivalence.
 - A thermal anomaly or reported wildfire event is not, by itself, confirmation of a ground fire.
 
-## Mozambique park boundaries
+## Mozambique protected-area boundaries
 
-The platform includes mapped boundaries for Gorongosa, Limpopo, Banhine, Zinave, Bazaruto, Maputo, Mágoè, and Quirimbas National Parks. The geometry is from OpenStreetMap (© OpenStreetMap contributors), licensed under ODbL 1.0. These mapped estimates are not authoritative legal boundaries and must be checked with park authorities before operational decisions or dispatch. The currently available Bazaruto geometry is particularly coarse and may be incomplete.
+The shared registry includes eight national parks, four wildlife reserves, and 13 forest reserves. It carries each area's source, license, and boundary-quality metadata through the `/parks` response and the global selector.
+
+- National-park geometries are mapped boundaries from OpenStreetMap (© OpenStreetMap contributors, ODbL 1.0). Bazaruto is coarse and may be incomplete.
+- Reserva Especial do Niassa uses OSM relation 6793881, named “Reserva do Niassa”; Reserva Nacional de Marromeu uses OSM way 1025552810, named “Marromeu Game Reserve.” These are mapped OSM polygons, not legal dispatch boundaries.
+- The 13 forest-reserve geometries come from the Mozambique Forest Reserves dataset published through RCMRD OFESA and credited to Mozambique's National Directorate of Forests. The data are WDPA-derived and distributed as free/open for use with attribution. Forest-reserve province values remain unspecified in the application because the source used here does not establish them consistently.
+- Reserva Parcial do Lago Niassa is represented by a clearly labeled approximate polygon connecting four vertices in Decree 59/2011. The polygon does not trace the shoreline or represent the contiguous land buffer.
+- Reserva Nacional de Pomene is represented by a clearly labeled approximate rectangle centered on a documented reserve locator and scaled to its reported area; it is not a legal boundary.
+
+All mapped boundaries are subject to source and positional limitations. Approximate extents are explicitly identified in map and field-visit metadata, and none should be treated as an authoritative operational boundary. Confirm boundary details with park authorities before dispatch.
 
 ## Source metadata
 

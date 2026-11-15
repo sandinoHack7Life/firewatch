@@ -7,7 +7,7 @@ import { useTranslation } from 'react-i18next';
 
 export function HarmonizationPage() {
   const { t } = useTranslation();
-  const { filters } = useOperationalContext();
+  const { filters, selectedParkLabel } = useOperationalContext();
   const [summary, setSummary] = useState<HarmonizationSummary | null>(null);
   const [matches, setMatches] = useState<HarmonizationMatch[]>([]);
   const [error, setError] = useState<string | null>(null);
@@ -37,7 +37,7 @@ export function HarmonizationPage() {
     <div className="page-stack">
       <header className="page-header">
         <div>
-          <p className="eyebrow">{t('Harmonization Explorer')} · {t(filters.region)}</p>
+          <p className="eyebrow">{t('Harmonization Explorer')} · {selectedParkLabel}</p>
           <h2>{t('Cross-Sensor Association Analysis')}</h2>
           <p className="page-description">{t('Original observations remain distinct; proximity matches are associations, not duplicate removal or proof of a shared physical fire.')}</p>
         </div>

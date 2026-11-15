@@ -189,6 +189,7 @@ class AlertService:
         subject: str,
         notes: str,
         observations: list[dict[str, Any]],
+        attachments: list[tuple[str, bytes, str]] | None = None,
     ) -> tuple[str, str]:
         if not self.smtp_configured:
             return 'not_configured', 'SMTP_HOST and SMTP_FROM_EMAIL are required for delivery.'
@@ -208,24 +209,44 @@ class AlertService:
             '</tr>'
             for item in observations
         )
-        map_link = 'https://firms.modaps.eosdis.nasa.gov/map/'
-        html_body = (
-            '<html><body><h2>Satellite fire observation alert</h2>'
-            f'<p>{html.escape(notes)}</p>'
-            '<p>NASA FIRMS satellite thermal anomaly records matching the configured watchlist:</p>'
-            '<table border="1" cellpadding="6" cellspacing="0"><thead><tr>'
-            '<th>Acquisition (UTC)</th><th>Satellite</th><th>Latitude, longitude</th>'
-            '<th>FRP</th><th>Confidence</th><th>Observation ID</th></tr></thead>'
-            f'<tbody>{rows}</tbody></table>'
-            f'<p><a href="{map_link}">Open NASA FIRMS map</a></p>'
-            '<p>These are satellite observations and are not, by themselves, confirmation of a ground fire.</p>'
-            '</body></html>'
-        )
-        message.set_content(
-            f'Firewatch alert: {len(observations)} satellite observation(s) matched the watchlist. '
-            f'Open NASA FIRMS: {map_link}'
-        )
+        if attachments and not observations:
+            html_body = (
+                '<html><body><h2>Ficha de Observação de Campo</h2>'
+                f'<p>{html.escape(notes)}</p>'
+                '<p>Os documentos PDF e DOCX anexos contêm o relatório completo.</p>'
+                '</body></html>'
+            )
+            message.set_content(
+                f'Ficha de Observação de Campo\n\n{notes}\n\n'
+                'Consulte os documentos PDF e DOCX anexos para o relatório completo.'
+            )
+        else:
+            map_link = 'https://firms.modaps.eosdis.nasa.gov/map/'
+            html_body = (
+                '<html><body><h2>Satellite fire observation alert</h2>'
+                f'<p>{html.escape(notes)}</p>'
+                '<p>NASA FIRMS satellite thermal anomaly records matching the configured watchlist:</p>'
+                '<table border="1" cellpadding="6" cellspacing="0"><thead><tr>'
+                '<th>Acquisition (UTC)</th><th>Satellite</th><th>Latitude, longitude</th>'
+                '<th>FRP</th><th>Confidence</th><th>Observation ID</th></tr></thead>'
+                f'<tbody>{rows}</tbody></table>'
+                f'<p><a href="{map_link}">Open NASA FIRMS map</a></p>'
+                '<p>These are satellite observations and are not, by themselves, confirmation of a ground fire.</p>'
+                '</body></html>'
+            )
+            message.set_content(
+                f'Firewatch alert: {len(observations)} satellite observation(s) matched the watchlist. '
+                f'Open NASA FIRMS: {map_link}'
+            )
         message.add_alternative(html_body, subtype='html')
+        for filename, content, content_type in attachments or []:
+            maintype, subtype = content_type.split('/', 1)
+            message.add_attachment(
+                content,
+                maintype=maintype,
+                subtype=subtype,
+                filename=filename,
+            )
         try:
             if self.settings.smtp_port == 465:
                 with smtplib.SMTP_SSL(
@@ -319,6 +340,33 @@ class AlertService:
             status,
             message,
             [recipient],
+            [],
+        )
+        if status != 'sent':
+            raise RuntimeError(message)
+        return entry
+
+    async def send_field_report(
+        self,
+        recipients: list[str],
+        subject: str,
+        notes: str,
+        attachments: list[tuple[str, bytes, str]],
+        client_id: str,
+    ) -> dict[str, Any]:
+        status, message = await asyncio.to_thread(
+            self._deliver,
+            recipients,
+            subject,
+            notes,
+            [],
+            attachments,
+        )
+        entry = self._write_history(
+            f'field-report:{client_id}',
+            status,
+            message,
+            recipients,
             [],
         )
         if status != 'sent':

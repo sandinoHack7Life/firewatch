@@ -9,7 +9,7 @@ const PAGE_SIZE = 25;
 
 export function DataExplorerPage() {
   const { t } = useTranslation();
-  const { filters } = useOperationalContext();
+  const { filters, selectedParkLabel } = useOperationalContext();
   const [records, setRecords] = useState<FireObservation[]>([]);
   const [selected, setSelected] = useState<FireObservation | null>(null);
   const [page, setPage] = useState(1);
@@ -56,6 +56,7 @@ export function DataExplorerPage() {
         start_date: filters.start_date,
         end_date: filters.end_date,
         bbox: filters.bbox?.split(',').map(Number),
+        park_id: filters.park_id,
         sensors: sensor ? [sensor] : ['MODIS', 'VIIRS', 'EONET'],
         search: search || undefined,
         min_frp: minFrp ? Number(minFrp) : undefined,
@@ -75,7 +76,7 @@ export function DataExplorerPage() {
     <div className="page-stack">
       <header className="page-header">
         <div>
-          <p className="eyebrow">{t('Data Explorer')} · {t(filters.region)}</p>
+          <p className="eyebrow">{t('Data Explorer')} · {selectedParkLabel}</p>
           <h2>{t('Live Observation Records')}</h2>
           <p className="page-description">{t('Server-side filters and pagination over the current source cache. NASA EONET reports remain clearly distinguished from sensor detections.')}</p>
         </div>
@@ -102,7 +103,7 @@ export function DataExplorerPage() {
       <section className="section-card table-wrap">
         <table>
           <thead>
-            <tr><th>{t('Observation / event')}</th><th>{t('Evidence source')}</th><th>{t('Platform')}</th><th>{t('Acquisition UTC')}</th><th>{t('Latitude')}</th><th>{t('Longitude')}</th><th>{t('FRP MW')}</th><th>{t('Confidence')}</th></tr>
+            <tr><th>{t('Observation / event')}</th><th>{t('Evidence source')}</th><th>{t('Platform')}</th><th>{t('Acquisition UTC')}</th><th>{t('Latitude')}</th><th>{t('Longitude')}</th><th>{t('FRP MW')}</th><th>{t('Confidence')}</th><th>{t('Field verification')}</th></tr>
           </thead>
           <tbody>
             {records.map((record) => (
@@ -113,9 +114,10 @@ export function DataExplorerPage() {
                 <td>{record.acquisition_date} {record.acquisition_time ?? ''}</td>
                 <td>{record.latitude.toFixed(5)}</td><td>{record.longitude.toFixed(5)}</td>
                 <td>{record.frp ?? t('Not reported')}</td><td>{record.confidence ?? t('Not reported')}</td>
+                <td>{record.field_verification_status ? `${t(record.field_verification_status)} · ${record.field_report_reference ?? ''}` : t('Not verified')}</td>
               </tr>
             ))}
-            {!records.length && !loading && <tr><td colSpan={8}>{t('No matching source records were returned.')}</td></tr>}
+            {!records.length && !loading && <tr><td colSpan={9}>{t('No matching source records were returned.')}</td></tr>}
           </tbody>
         </table>
         {loading && <p className="chart-caption">{t('Querying source records…')}</p>}

@@ -3,7 +3,7 @@
 ## Local setup
 
 1. Copy `.env.example` to the project-root `.env`.
-2. Add a `FIRMS_MAP_KEY` for MODIS/VIIRS satellite CSV feeds, a random `FIELD_DATA_ACCESS_KEY` with at least 32 characters, and optional SMTP settings for email delivery. NASA EONET works without a key. Keep all secrets in the ignored `.env`.
+2. Add a `FIRMS_MAP_KEY` for MODIS/VIIRS satellite CSV feeds and optional SMTP settings for email delivery. NASA EONET works without a key. Keep all secrets in the ignored `.env`.
 3. In one terminal, create the backend environment, install dependencies, and start FastAPI:
    ```powershell
    cd backend
@@ -20,7 +20,7 @@
    ```
 5. Backend docs: `http://localhost:8000/docs`; frontend app: `http://localhost:5174`.
 
-The backend resolves `.env` relative to the project root and stores observations, alerts, and field visits in separate SQLite databases under the user's home directory by default. Configure persistent storage for managed deployments; Docker Compose mounts a named data volume. Set `FIELD_DATA_ACCESS_KEY` to enable field-visit endpoints. Never include it in frontend environment variables.
+The backend resolves `.env` relative to the project root and stores observations, alerts, and field visits in separate SQLite databases under the user's home directory by default. Configure persistent storage for managed deployments; Docker Compose mounts a named data volume. Field-report endpoints are unauthenticated; protect access to the backend at the network or deployment layer.
 
 ## Frontend workflow
 

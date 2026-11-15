@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useState } from 'react';
 import type { FormEvent } from 'react';
 
-import type { AlertHistoryEntry, NationalPark, Watchlist } from '../../services/api';
+import type { AlertHistoryEntry, Watchlist } from '../../services/api';
 import { api } from '../../services/api';
+import { useOperationalContext } from '../../components/layout/OperationalContext';
 import { useTranslation } from 'react-i18next';
 
 type GeofenceType = Watchlist['geofence_type'];
@@ -32,9 +33,9 @@ function localTimestamp(timestamp: string, language: string): string {
 
 export function AlertsPage() {
   const { t, i18n } = useTranslation();
+  const { parks, selectedParkId, selectedParkLabel } = useOperationalContext();
   const [watchlists, setWatchlists] = useState<Watchlist[]>([]);
   const [history, setHistory] = useState<AlertHistoryEntry[]>([]);
-  const [parks, setParks] = useState<NationalPark[]>([]);
   const [form, setForm] = useState(() => ({ ...emptyForm, subject: t('Firewatch satellite fire alert') }));
   const [editingId, setEditingId] = useState<string | null>(null);
   const [testRecipient, setTestRecipient] = useState('');
@@ -44,19 +45,17 @@ export function AlertsPage() {
 
   const refresh = useCallback(async () => {
     try {
-      const [watchlistResponse, historyResponse, parkResponse] = await Promise.all([
-        api.getWatchlists(),
-        api.getAlertHistory(),
-        api.getParks(),
+      const [watchlistResponse, historyResponse] = await Promise.all([
+        api.getWatchlists(selectedParkId),
+        api.getAlertHistory(selectedParkId),
       ]);
       setWatchlists(watchlistResponse.watchlists);
       setHistory(historyResponse.items);
-      setParks(parkResponse.items);
       setError(null);
     } catch (reason) {
       setError(reason instanceof Error ? t(reason.message) : t('Alert configuration could not be loaded.'));
     }
-  }, [t]);
+  }, [selectedParkId, t]);
 
   useEffect(() => { void refresh(); }, [refresh]);
 
@@ -158,7 +157,7 @@ export function AlertsPage() {
     <div className="page-stack">
       <header className="page-header">
         <div>
-          <p className="eyebrow">{t('Operational Notifications')}</p>
+          <p className="eyebrow">{t('Operational Notifications')} · {selectedParkLabel}</p>
           <h2>{t('Alerts & Watchlists')}</h2>
           <p className="page-description">{t('Email notifications evaluate newly synchronized NASA FIRMS MODIS/VIIRS observations. EONET events do not have FRP or satellite-confidence metrics and do not trigger thermal watchlists.')}</p>
         </div>
@@ -175,14 +174,18 @@ export function AlertsPage() {
           </div>
           <label>{t('Watchlist name')}<input required maxLength={100} value={form.name} onChange={(event) => updateForm('name', event.target.value)} /></label>
           <label>{t('Geofence type')}
-            <select value={form.geofence_type} onChange={(event) => updateForm('geofence_type', event.target.value as GeofenceType)}>
-              <option value="park">{t('Mozambique national park')}</option><option value="preset">{t('Named region preset')}</option><option value="radius">{t('Center + radius')}</option><option value="bbox">{t('Bounding box')}</option>
+            <select value={form.geofence_type} onChange={(event) => {
+              const geofenceType = event.target.value as GeofenceType;
+              updateForm('geofence_type', geofenceType);
+              if (geofenceType === 'park' && selectedParkId) updateForm('park_id', selectedParkId);
+            }}>
+              <option value="park">{t('Mozambique conservation area')}</option><option value="preset">{t('Named region preset')}</option><option value="radius">{t('Center + radius')}</option><option value="bbox">{t('Bounding box')}</option>
             </select>
           </label>
           {form.geofence_type === 'park' && (
-            <label>{t('National park')}
+            <label>{t('Conservation area')}
               <select value={form.park_id ?? 'gorongosa'} onChange={(event) => updateForm('park_id', event.target.value as Watchlist['park_id'])}>
-                {parks.map((park) => <option key={park.id} value={park.id}>{park.name} · {park.province}</option>)}
+                {parks.map((park) => <option key={park.id} value={park.id}>{park.name}{park.province ? ` · ${park.province}` : ''}</option>)}
               </select>
             </label>
           )}

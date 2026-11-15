@@ -1,7 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 
 import { api } from '../../services/api';
-import type { NationalPark, ParkId } from '../../services/api';
 import { useOperationalContext } from '../../components/layout/OperationalContext';
 import { useTranslation } from 'react-i18next';
 
@@ -13,8 +12,6 @@ interface CalendarBucket {
   viirs: number;
   baseline: number | null;
 }
-
-const DEFAULT_PARK_ID: ParkId = 'gorongosa';
 
 function isoWeekBucket(date: Date): string {
   const thursday = new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate()));
@@ -76,11 +73,9 @@ function shiftYear(value: string, years: number): string {
 
 export function CalendarPage() {
   const { t } = useTranslation();
-  const { filters } = useOperationalContext();
+  const { filters, selectedParkLabel } = useOperationalContext();
   const [view, setView] = useState<CalendarView>('daily');
   const [sensor, setSensor] = useState('');
-  const [parkId, setParkId] = useState<ParkId>(DEFAULT_PARK_ID);
-  const [parks, setParks] = useState<NationalPark[]>([]);
   const [selectedYear, setSelectedYear] = useState<number | null>(null);
   const [calendar, setCalendar] = useState<CalendarBucket[]>([]);
   const [baselineAvailable, setBaselineAvailable] = useState(false);
@@ -100,16 +95,6 @@ export function CalendarPage() {
   }, []);
 
   useEffect(() => {
-    let active = true;
-    api.getParks()
-      .then((response) => { if (active) setParks(response.items); })
-      .catch((reason: unknown) => {
-        if (active) setError(reason instanceof Error ? t(reason.message) : t('National parks could not be loaded.'));
-      });
-    return () => { active = false; };
-  }, [t]);
-
-  useEffect(() => {
     setSelectedYear(null);
   }, [filters.start_date, filters.end_date]);
 
@@ -121,15 +106,13 @@ export function CalendarPage() {
         ...filters,
         start_date: activeStart,
         end_date: activeEnd,
-        park_id: parkId,
         view,
         sensor: sensor || undefined,
       }),
       api.getCalendar({
-        bbox: filters.bbox,
+        ...filters,
         start_date: baselineStart,
         end_date: baselineEnd,
-        park_id: parkId,
         view,
         sensor: sensor || undefined,
       }),
@@ -152,17 +135,15 @@ export function CalendarPage() {
         if (active) setLoading(false);
       });
     return () => { active = false; };
-  }, [activeEnd, activeStart, baselineEnd, baselineStart, filters.bbox, filters.region, parkId, sensor, t, view]);
+  }, [activeEnd, activeStart, baselineEnd, baselineStart, filters, sensor, t, view]);
 
   const maxValue = Math.max(...calendar.map((item) => item.total), 0);
   const maxBaseline = Math.max(...calendar.map((item) => item.baseline ?? 0), 0);
-  const parkName = parks.find((park) => park.id === parkId)?.name ?? parkId;
-
   return (
     <div className="page-stack">
       <header className="page-header">
         <div>
-          <p className="eyebrow">{t('Burning Activity Calendar')} · {parkName}</p>
+          <p className="eyebrow">{t('Burning Activity Calendar')} · {selectedParkLabel}</p>
           <h2>{t('Observed Detection Calendar')}</h2>
           <p className="page-description">{t('Counts are real stored observations. A blank date means no record was returned, not a zero-risk day.')}</p>
         </div>
@@ -171,11 +152,6 @@ export function CalendarPage() {
       {error && <p className="inline-error" role="alert">{error}</p>}
 
       <section className="section-card controls-row">
-        <label>{t('National park')}
-          <select value={parkId} onChange={(event) => setParkId(event.target.value as ParkId)}>
-            {parks.map((park) => <option key={park.id} value={park.id}>{park.name} · {park.province}</option>)}
-          </select>
-        </label>
         <label>{t('Aggregation')}
           <select value={view} onChange={(event) => setView(event.target.value as CalendarView)}>
             <option value="daily">{t('Daily')}</option><option value="weekly">{t('Weekly')}</option><option value="monthly">{t('Monthly')}</option>
@@ -238,7 +214,7 @@ export function CalendarPage() {
             })}
           </div>
         ) : (
-          <p className="chart-empty">{loading ? t('Retrieving observations…') : t('No records in this range. Empty dates are not interpolated.')}</p>
+          <p className="chart-empty">{loading ? t('Retrieving observations…') : t('No records in {{area}} for this range. Empty dates are not interpolated.', { area: selectedParkLabel })}</p>
         )}
       </section>
     </div>
